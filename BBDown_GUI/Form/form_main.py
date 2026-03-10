@@ -1,7 +1,11 @@
 import os
 import json
 
-from PyQt5.QtWidgets import QMainWindow, QFileDialog
+from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import (
+    QMainWindow, QFileDialog, QDialog, QVBoxLayout, QHBoxLayout,
+    QRadioButton, QPushButton, QLabel, QButtonGroup
+)
 from PyQt5.QtGui import QPixmap, QIcon
 
 from BBDown_GUI.UI.ui_main import Ui_Form_main
@@ -11,6 +15,7 @@ from BBDown_GUI.Form.form_output import FormOutput
 from BBDown_GUI.Form.form_about import FormAbout
 
 from BBDown_GUI.tool import resource_path, get_workdir, get_bbdowndir
+from BBDown_GUI.i18n import TRANSLATIONS, LANG_CYCLE
 
 workdir = get_workdir()
 bbdowndir = get_bbdowndir()
@@ -22,26 +27,34 @@ class FormMain(QMainWindow, Ui_Form_main):
             f = open(os.path.join(workdir, "config.json"), "r")
             config = json.loads(f.read())
             f.close()
+            # Load language first
+            if "lang" in config:
+                self.current_lang = config["lang"]
             for item in config:
                 if item == "advanced":
                     self.advanced = config[item]
+                    t = TRANSLATIONS.get(self.current_lang, TRANSLATIONS["en"])
                     if self.advanced:
-                        self.pushButton_advanced.setText("简易选项<")
+                        self.pushButton_advanced.setText(t["btn_advanced_collapse"])
                         self.resize(1560, 500)
                         self.advanced = True
                     else:
-                        self.pushButton_advanced.setText("高级选项>")
+                        self.pushButton_advanced.setText(t["btn_advanced_expand"])
                         self.resize(620, 400)
                         self.advanced = False
+                elif item == "lang":
+                    pass  # already handled above
                 elif type(config[item]) == type(True):
                     exec(f'self.{item}.setChecked({config[item]})')
                 elif type(config[item]) == type(''):
                     exec(f'self.{item}.setText(r"{config[item]}")')
                 elif type(config[item]) == type(0):
                     exec(f'self.{item}.setCurrentIndex({config[item]})')
-        
+
         super(FormMain, self).__init__()
+        self.current_lang = "en"  # default language
         self.setupUi(self)
+        self.retranslateUi(self, lang=self.current_lang)
         icon = QIcon()
         icon.addPixmap(QPixmap(resource_path("./UI/favicon.ico")), QIcon.Normal, QIcon.Off)
         self.setWindowIcon(icon)
@@ -56,11 +69,17 @@ class FormMain(QMainWindow, Ui_Form_main):
         self.pushButton_bbdown.clicked.connect(self.bbdownpath)
         self.pushButton_param.clicked.connect(self.param)
         self.pushButton_download.clicked.connect(self.download)
-        self.pushButton_advanced.clicked.connect(self.advanced)
+        self.pushButton_advanced.clicked.connect(self.toggle_advanced)
         self.advanced = False
         self.pushButton_about.clicked.connect(self.about)
+        self.pushButton_lang.clicked.connect(self.toggle_language)
         try:
             Load(self)
+            # Re-apply translations with loaded language
+            self.retranslateUi(self, lang=self.current_lang)
+            if not self.advanced:
+                t = TRANSLATIONS.get(self.current_lang, TRANSLATIONS["en"])
+                self.pushButton_advanced.setText(t["btn_advanced_expand"])
         except:
             # 当之前没有保存过任何参数时，界面为默认
             self.resize(620, 400)
@@ -254,6 +273,7 @@ class FormMain(QMainWindow, Ui_Form_main):
                 elif i[:9]=="comboBox_":
                     exec(f"config[i] = self.{i}.currentIndex()")
             config["advanced"] = self.advanced
+            config["lang"] = self.current_lang
             f = open(os.path.join(workdir, "config.json"), "w")
             f.write(json.dumps(config, indent=4))
             f.close()
@@ -265,14 +285,68 @@ class FormMain(QMainWindow, Ui_Form_main):
         self.win_output.show()
 
 
+    # 切换语言 / Open language selection dialog
+    def toggle_language(self):
+        LANG_LABELS = {
+            "en": "🇬🇧 English",
+            "zh": "🇨🇳 Chinese / 中文",
+            "vi": "🇻🇳 Tiếng Việt",
+            "ko": "🇰🇷 Korean / 한국어",
+            "ja": "🇯🇵 Japanese / 日本語",
+        }
+
+        t = TRANSLATIONS.get(self.current_lang, TRANSLATIONS["en"])
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle(t["dialog_lang_title"])
+        dialog.setWindowFlags(dialog.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+        dialog.setMinimumWidth(260)
+
+        layout = QVBoxLayout(dialog)
+        label = QLabel(t["dialog_lang_label"])
+        layout.addWidget(label)
+
+        btn_group = QButtonGroup(dialog)
+        radios = {}
+        for lang_code in LANG_CYCLE:
+            rb = QRadioButton(LANG_LABELS[lang_code])
+            if lang_code == self.current_lang:
+                rb.setChecked(True)
+            btn_group.addButton(rb)
+            layout.addWidget(rb)
+            radios[rb] = lang_code
+
+        # OK / Cancel buttons
+        btn_layout = QHBoxLayout()
+        btn_ok = QPushButton(t["dialog_ok"])
+        btn_cancel = QPushButton(t["dialog_cancel"])
+        btn_layout.addWidget(btn_ok)
+        btn_layout.addWidget(btn_cancel)
+        layout.addLayout(btn_layout)
+
+        btn_ok.clicked.connect(dialog.accept)
+        btn_cancel.clicked.connect(dialog.reject)
+
+        if dialog.exec_() == QDialog.Accepted:
+            checked = btn_group.checkedButton()
+            if checked and radios[checked] != self.current_lang:
+                self.current_lang = radios[checked]
+                self.retranslateUi(self, lang=self.current_lang)
+                t = TRANSLATIONS.get(self.current_lang, TRANSLATIONS["en"])
+                if self.advanced:
+                    self.pushButton_advanced.setText(t["btn_advanced_collapse"])
+                else:
+                    self.pushButton_advanced.setText(t["btn_advanced_expand"])
+
     # 高级选项
-    def advanced(self):
+    def toggle_advanced(self):
+        t = TRANSLATIONS.get(self.current_lang, TRANSLATIONS["en"])
         if not self.advanced:
-            self.pushButton_advanced.setText("简易选项<")
+            self.pushButton_advanced.setText(t["btn_advanced_collapse"])
             self.resize(1560, 500)
             self.advanced = True
         else:
-            self.pushButton_advanced.setText("高级选项>")
+            self.pushButton_advanced.setText(t["btn_advanced_expand"])
             self.resize(620, 400)
             self.advanced = False
 

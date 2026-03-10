@@ -1,0 +1,3 @@
+@echo off
+echo Starting BBDown_GUI...
+"%~dp0.venv\Scripts\python.exe" -m BBDown_GUI
